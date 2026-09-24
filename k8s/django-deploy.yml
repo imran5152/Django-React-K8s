@@ -20,7 +20,7 @@ spec:
       containers:
         - name: college-app
 
-          image: imran5152/college-app-django:v1
+          image: imran5152/college-app-django:latest
           imagePullPolicy: Always
 
           ports:
