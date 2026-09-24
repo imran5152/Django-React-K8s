@@ -1,0 +1,136 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/imran5152/Django-React-K8s.git'
+            }
+        }
+
+        stage('Backend Test') {
+            steps {
+                sh '''
+                    docker run --rm -e PYTHONDONTWRITEBYTECODE=1 \
+                      -v "${WORKSPACE}/college-app:/app" -w /app python:3.12-slim \
+                      sh -c "pip install --no-cache-dir -q -r requirements.txt && python manage.py check"
+                '''
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                sh '''
+                    docker run --rm \
+                      -v "${WORKSPACE}/college-app:/usr/src" \
+                      sonarsource/sonar-scanner-cli \
+                      -Dsonar.projectKey=jango-k8s-react \
+                      -Dsonar.sources=/usr/src \
+                      -Dsonar.host.url=http://50.16.3.32:9000 \
+                      -Dsonar.login=squ_21e2e35e9ebaadb341090e6023e6c7d226df1673
+                '''
+            }
+        }
+
+        stage('Build Docker Images') {
+            steps {
+                parallel(
+                    'Backend Build': {
+                        dir('college-app') {
+                            sh 'docker build -t imran5152/college-app-django:latest .'
+                        }
+                    },
+                    'Frontend Build': {
+                        dir('college-frontend') {
+                            sh 'docker build -t imran5152/college-frontend-k8s:latest .'
+                        }
+                    }
+                )
+            }
+        }
+
+        stage('Trivy Security Scan') {
+            steps {
+                sh '''
+                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity HIGH,CRITICAL imran5152/college-app-django:latest
+                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity HIGH,CRITICAL imran5152/college-frontend-k8s:latest
+                '''
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                sh '''
+                    docker push imran5152/college-app-django:latest
+                    docker push imran5152/college-frontend-k8s:latest
+                '''
+            }
+        }
+
+        stage('Deploy MongoDB') {
+            steps {
+                dir('k8s') {
+                    sh '''
+                        export KUBECONFIG=/var/lib/jenkins/.kube/config
+                        kubectl apply --validate=false -f configmap.yaml
+                        kubectl apply --validate=false -f sts-svc.yaml
+                        kubectl apply --validate=false -f sts.yaml
+                        kubectl rollout status statefulset/mongodb --timeout=120s
+                    '''
+                }
+            }
+        }
+
+
+  stage('Deploy Django Secret') {
+    steps {
+        sh '''
+            kubectl create secret generic django-secret \
+              --from-literal=DJANGO_SECRET_KEY='9ouJa2yrL6rnakgb0RY0-rC83AmsO8t5q5aS_3Edj-VmIeuP2ZskTodTTFPT4gErnaQ' \
+              --dry-run=client -o yaml | kubectl apply -f -
+        '''
+    }
+}
+        stage('Deploy Backend API') {
+            steps {
+                dir('k8s') {
+                    sh '''
+                        export KUBECONFIG=/var/lib/jenkins/.kube/config
+                        kubectl apply --validate=false -f django-deploy.yml
+                        kubectl apply --validate=false -f django-svc.yml
+                        kubectl rollout restart deployment/college-app
+                        kubectl rollout status deployment/college-app --timeout=120s
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy Frontend Web') {
+            steps {
+                dir('k8s') {
+                    sh '''
+                        export KUBECONFIG=/var/lib/jenkins/.kube/config
+                        kubectl apply --validate=false -f react-deploy.yml
+                        kubectl apply --validate=false -f react-svc.yml
+                        kubectl rollout restart deployment/college-frontend
+                        kubectl rollout status deployment/college-frontend --timeout=120s
+                    '''
+                }
+            }
+        }
+
+        stage('Smoke Test') {
+            steps {
+                sh '''
+                    export KUBECONFIG=/var/lib/jenkins/.kube/config
+                    echo "--- Checking Kubernetes Pods & Services ---"
+                    kubectl get pods -o wide
+                    kubectl get svc
+
+                    echo "--- Testing Backend API Data Retrieval ---"
+                    kubectl run temp-curl-test --image=curlimages/curl --rm -i --restart=Never -- curl -s http://college-svc:8090/students || true
+                '''
+            }
+        }
+    }
+}
