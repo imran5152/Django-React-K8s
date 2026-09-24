@@ -99,6 +99,19 @@ kubectl exec deploy/college-app -- python manage.py seed   # optional sample dat
 ```bash
 kubectl get svc college-frontend-service    # EXTERNAL-IP (or hostname) column
 ```
+## Project Screenshots
+
+### Django Backend API
+
+![Django Backend API](screenshots/WhatsApp%20Image%202026-09-24%20at%205.49.32%20PM.jpeg)
+
+### MongoDB Database
+
+![MongoDB Database](screenshots/WhatsApp%20Image%202026-09-24%20at%205.49.33%20PM.jpeg)
+
+### Kubernetes Deployment
+
+![Kubernetes Deployment](screenshots/WhatsApp%20Image%202026-09-24%20at%205.49.33%20PM1.jpeg)
 
 ## Troubleshooting
 
