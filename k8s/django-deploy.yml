@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: college-app
+
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: college-app
+
+  template:
+    metadata:
+      labels:
+        app: college-app
+
+    spec:
+      containers:
+        - name: college-app
+
+          image: imran5152/college-app-django:v1
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 8090
+
+          env:
+            - name: MONGODB_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: college-app-config
+                  key: MONGODB_URI
+            - name: DJANGO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: django-secret
+                  key: DJANGO_SECRET_KEY
+            - name: DJANGO_DEBUG
+              value: "False"
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+          # Ready only when MongoDB answers
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+
+          # Alive as long as Django responds
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            initialDelaySeconds: 15
+            periodSeconds: 20

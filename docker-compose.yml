@@ -1,0 +1,25 @@
+# Quick way to run all three tiers on one machine (laptop or a single EC2 instance).
+# The Django service is named "college-svc" so the Nginx config works unchanged.
+services:
+  mongodb:
+    image: mongo:7
+    volumes:
+      - mongodb-data:/data/db
+
+  college-svc:
+    build: ./college-app
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/college
+      DJANGO_SECRET_KEY: change-me-before-going-live
+    depends_on:
+      - mongodb
+
+  college-frontend:
+    build: ./college-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - college-svc
+
+volumes:
+  mongodb-data:
